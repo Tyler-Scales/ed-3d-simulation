@@ -4,6 +4,8 @@ An interactive 3D model of a small emergency department. Patients arrive, get tr
 
 It is one HTML file with no build step.
 
+**[Open the live demo](https://tyler-scales.github.io/ed-3d-simulation/)**
+
 ![The simulation running, with a patient selected and their visit timeline in the side panel](docs/screenshots/overview.png)
 
 > **All patients and timings are generated.** The parameters are illustrative and are not calibrated to any real hospital. This is a teaching and exploration tool, not a planning or clinical tool.
@@ -23,6 +25,10 @@ It is one HTML file with no build step.
 - [Technical notes](#technical-notes)
 
 ## Quick start
+
+The quickest way to try it is the [live demo](https://tyler-scales.github.io/ed-3d-simulation/), which is this repository's `index.html` served by GitHub Pages.
+
+To run it locally:
 
 ```bash
 git clone https://github.com/Tyler-Scales/ed-3d-simulation.git
