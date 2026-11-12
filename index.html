@@ -1,0 +1,1320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Interactive 3D simulation of patient flow through a 15-bed emergency department.">
+<title>15-Bed ED in 3D</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: a 3D model view of the department floor is the page. Clock and transport sit above it, a KPI band reports the run, and a side column holds the scenario levers, one patient's visit, the waiting list and the event feed. */
+:root{
+  --bg:#EDF1F3; --surface:#FFFFFF; --surface-2:#F5F8F9;
+  --ink:#13232B; --ink-2:#465963; --ink-3:#65767F;
+  --line:#D5DDE1; --line-strong:#B2BFC6;
+  --accent:#0C6B73; --accent-ink:#FFFFFF;
+  --good:#1B7A2A; --warn:#8F5A00; --crit:#B42323;
+  --c1:#2a78d6; --c2:#eb6834; --c3:#1baf7a;
+  --lbl-bg:rgba(255,255,255,.86);
+  /* 3D scene */
+  --sc-ground:#D3DCE1; --sc-grid:#BFCAD1; --sc-floor:#F3F5F6; --sc-wall:#B9C5CC;
+  --sc-zpublic:#DFE9F3; --sc-zresus:#F6E3E4; --sc-zfast:#E1F0E4; --sc-zsupport:#E8E3F1;
+  --sc-frame:#62727C; --sc-mattress:#FFFFFF; --sc-pillow:#CFDAE1; --sc-furn:#7F919C; --sc-top:#AEBCC5; --sc-chair:#56708A;
+  --sc-door:#0C6B73; --sc-amb:#F7F9FA; --sc-ambstripe:#D7263D; --sc-dark:#2B363D; --sc-head:#FFFFFF;
+  --esi1:#D7263D; --esi2:#F08A24; --esi3:#E9BE1E; --esi4:#3DAA5C; --esi5:#4A90D9;
+  --st-md:#0E5A62; --st-rn:#3A3FA8; --st-evs:#7A6A58;
+  --pad-wait:#F5B83D; --pad-care:#49C2B3; --pad-board:#9B6BDF; --pad-dirty:#8D9AA2;
+  --f-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-data:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1418; --surface:#151F25; --surface-2:#1B2830;
+    --ink:#E3EBEE; --ink-2:#A9B8C0; --ink-3:#8496A0;
+    --line:#2A3942; --line-strong:#3D505B;
+    --accent:#5CC6CF; --accent-ink:#06262A;
+    --good:#5CCB6B; --warn:#F0B13C; --crit:#FF8A8A;
+    --c1:#3987e5; --c2:#d95926; --c3:#199e70;
+    --lbl-bg:rgba(13,20,24,.8);
+    --sc-ground:#0A1014; --sc-grid:#18232A; --sc-floor:#1E2A32; --sc-wall:#44565F;
+    --sc-zpublic:#1D3040; --sc-zresus:#35242A; --sc-zfast:#1D3529; --sc-zsupport:#2B2740;
+    --sc-frame:#56676F; --sc-mattress:#C9D4DA; --sc-pillow:#93A3AD; --sc-furn:#465864; --sc-top:#61757F; --sc-chair:#3E5870;
+    --sc-door:#5CC6CF; --sc-amb:#D5DCE0; --sc-ambstripe:#D7263D; --sc-dark:#11181C; --sc-head:#F2F5F7;
+    --st-md:#2FB8C4; --st-rn:#7F86F5; --st-evs:#B39B80;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1418; --surface:#151F25; --surface-2:#1B2830;
+  --ink:#E3EBEE; --ink-2:#A9B8C0; --ink-3:#8496A0;
+  --line:#2A3942; --line-strong:#3D505B;
+  --accent:#5CC6CF; --accent-ink:#06262A;
+  --good:#5CCB6B; --warn:#F0B13C; --crit:#FF8A8A;
+  --c1:#3987e5; --c2:#d95926; --c3:#199e70;
+  --lbl-bg:rgba(13,20,24,.8);
+  --sc-ground:#0A1014; --sc-grid:#18232A; --sc-floor:#1E2A32; --sc-wall:#44565F;
+  --sc-zpublic:#1D3040; --sc-zresus:#35242A; --sc-zfast:#1D3529; --sc-zsupport:#2B2740;
+  --sc-frame:#56676F; --sc-mattress:#C9D4DA; --sc-pillow:#93A3AD; --sc-furn:#465864; --sc-top:#61757F; --sc-chair:#3E5870;
+  --sc-door:#5CC6CF; --sc-amb:#D5DCE0; --sc-ambstripe:#D7263D; --sc-dark:#11181C; --sc-head:#F2F5F7;
+  --st-md:#2FB8C4; --st-rn:#7F86F5; --st-evs:#B39B80;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;font-variant-numeric:tabular-nums}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:1440px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+h1,h2,h3,p{margin:0}
+h1{font:600 26px/1.15 var(--f-body);letter-spacing:-.01em;text-wrap:balance}
+h2{font:600 17px/1.2 var(--f-body)}
+.eyebrow{font:600 13px var(--f-data);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.muted{color:var(--ink-3)}
+.small{font-size:13px}
+.masthead{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 16px}
+.tag{font:600 13px var(--f-data);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-2);border:1px solid var(--line-strong);border-radius:999px;padding:2px 10px}
+
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding-block:8px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 20px}
+.clock{display:flex;align-items:baseline;gap:10px;min-width:0;flex-wrap:wrap}
+.clock .day{font:600 14px var(--f-data);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.clock .time{font:700 34px/1 var(--f-data)}
+.clock .shift{font-size:13px;color:var(--ink-2)}
+.transport{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.btn{font:600 14px var(--f-body);padding:7px 14px;border-radius:6px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer}
+.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;min-width:78px}
+.btn.sm{padding:4px 10px;font-size:13px}
+.btn:focus-visible,.wrow:focus-visible,summary:focus-visible,canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.seg{position:relative;display:inline-flex;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden;background:var(--surface)}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{padding:6px 0;width:38px;text-align:center;font:600 15px var(--f-data);cursor:pointer;color:var(--ink-2)}
+.seg label+input+label{border-left:1px solid var(--line)}
+.seg input:checked+label{background:var(--ink);color:var(--surface)}
+.seg input:focus-visible+label{outline:2px solid var(--accent);outline-offset:-2px}
+.seg-cap{font-size:13px;color:var(--ink-3)}
+
+.kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);padding:10px 12px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.kpi .k{font:600 13px var(--f-data);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.kpi .v{font:600 30px/1.05 var(--f-data);color:var(--ink)}
+.kpi .v small{font-size:17px;font-weight:500;color:var(--ink-3)}
+.kpi .s{font-size:13px;color:var(--ink-2);min-height:19px}
+.kpi[data-level="warn"] .v{color:var(--warn)}
+.kpi[data-level="crit"] .v{color:var(--crit)}
+.kpi[data-level="warn"] .s::before,.kpi[data-level="crit"] .s::before{content:"\25B2\00a0";font-size:10px}
+.kpi[data-level="warn"] .s::before{color:var(--warn)}
+.kpi[data-level="crit"] .s::before{color:var(--crit)}
+
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:1000px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.panel-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px}
+
+/* 3D view */
+.viewpanel{padding:0;gap:0;overflow:hidden}
+.view{position:relative;width:100%;aspect-ratio:16/10;max-height:700px;background:var(--sc-ground);overflow:hidden}
+@media (max-width:700px){.view{aspect-ratio:1/1}}
+.view canvas{display:block;width:100%;height:100%;cursor:grab}
+.view canvas:active{cursor:grabbing}
+.labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;left:0;top:0;font:700 12px/1.2 var(--f-data);color:var(--ink);background:var(--lbl-bg);padding:1px 5px;border-radius:3px;white-space:nowrap;will-change:transform}
+.lbl small{font-weight:500;font-size:12px;color:var(--ink-2);margin-left:4px}
+.lbl.zone{background:none;color:var(--ink-2);letter-spacing:.09em;text-transform:uppercase;font-weight:600;font-size:11px}
+@media (max-width:700px){.lbl.zone{display:none}.lbl small{display:none}}
+.viewbtns{position:absolute;top:10px;right:10px;display:flex;gap:6px}
+.nogl{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--ink-2)}
+.viewfoot{padding:12px 16px 14px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13px;color:var(--ink-2)}
+.legend .grp{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
+.legend .gh{font:600 12px var(--f-data);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.legend .i{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.legend .dot{width:11px;height:11px;border-radius:50%;flex:none}
+.legend .sq{width:10px;height:13px;border-radius:2px;flex:none}
+.legend .pad{width:16px;height:10px;border-radius:2px;flex:none;opacity:.8}
+.legend b{font-weight:600;color:var(--ink)}
+
+.lever{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:baseline}
+.lever label{font-weight:500}
+.lever output{font:600 17px var(--f-data);color:var(--ink)}
+.lever input[type=range]{grid-column:1/-1;width:100%;margin:2px 0;accent-color:var(--accent)}
+.lever .hint{grid-column:1/-1;font-size:13px;color:var(--ink-3)}
+.surge{display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--line);padding-top:12px}
+.surge .btn{align-self:flex-start}
+
+.esi{font:700 12px/1 var(--f-data);min-width:18px;height:18px;padding:0 4px;border-radius:9px;display:inline-grid;place-items:center;flex:none;color:#fff}
+.esi.e1{background:var(--esi1)}.esi.e2{background:var(--esi2);color:#2A1700}.esi.e3{background:var(--esi3);color:#2A2000}.esi.e4{background:var(--esi4);color:#04210E}.esi.e5{background:var(--esi5);color:#051C36}
+.wlist{display:flex;flex-direction:column}
+.wrow{appearance:none;font:inherit;color:inherit;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:7px 2px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;cursor:pointer;width:100%}
+.wrow:first-child{border-top:0}
+.wrow:hover{background:var(--surface-2)}
+.wrow>*{pointer-events:none}
+.wrow .who{font-weight:500;overflow-wrap:anywhere}
+.wrow .sub{display:block;font-size:13px;color:var(--ink-3);font-weight:400}
+.wrow .wt{font:600 16px var(--f-data)}
+.wrow.late .wt{color:var(--crit)}
+.wrow.sel{background:var(--surface-2);box-shadow:inset 3px 0 0 var(--accent)}
+.empty{color:var(--ink-3);font-size:14px}
+
+.pt-head{display:flex;align-items:center;gap:10px}
+.pt-head .name{font:600 20px/1.2 var(--f-data)}
+.pt-meta{font-size:14px;color:var(--ink-2)}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.steps li{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:14px}
+.steps li:first-child{border-top:0}
+.steps time{font:600 15px var(--f-data);color:var(--ink-2)}
+.steps .n{color:var(--ink-3)}
+
+.feed{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:300px;overflow-y:auto}
+.feed li{display:grid;grid-template-columns:44px 46px minmax(0,1fr);gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:14px;align-items:baseline}
+.feed li:first-child{border-top:0}
+.feed time{font:600 15px var(--f-data);color:var(--ink-2)}
+.feed .kd{font:700 12px var(--f-data);letter-spacing:.05em;color:var(--ink-3)}
+.feed .kd.LWBS,.feed .kd.CRASH{color:var(--crit)}
+
+.chart-legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--ink-2)}
+.chart-legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.chart{position:relative;min-width:0}
+.chart svg{display:block;touch-action:pan-y}
+.chart .gl{stroke:var(--line);stroke-width:1}
+.chart .cap{stroke:var(--line-strong);stroke-width:1;stroke-dasharray:4 4}
+.chart .ax{font:500 12px var(--f-data);fill:var(--ink-3)}
+.chart .lb{font:500 13px var(--f-data);fill:var(--ink-2)}
+.chart .lb .v{font-weight:700;fill:var(--ink);font-size:14px}
+.chart .ln{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .l1{stroke:var(--c1)}.chart .l2{stroke:var(--c2)}.chart .l3{stroke:var(--c3)}
+.chart .d1{fill:var(--c1)}.chart .d2{fill:var(--c2)}.chart .d3{fill:var(--c3)}
+.chart circle{stroke:var(--surface);stroke-width:2}
+.chart .xh{stroke:var(--ink-3);stroke-width:1}
+.tip{position:absolute;top:8px;pointer-events:none;background:var(--surface);border:1px solid var(--line-strong);border-radius:5px;padding:7px 10px;font-size:13px;line-height:1.5;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.tip b{font:600 14px var(--f-data);color:var(--ink)}
+.tip i{display:inline-block;width:10px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.tip .r{display:flex;justify-content:space-between;gap:16px;color:var(--ink-2)}
+details summary{cursor:pointer;font-size:14px;color:var(--ink-2);width:fit-content}
+.tbl-wrap{overflow-x:auto;margin-top:8px}
+table{border-collapse:collapse;font-size:14px;min-width:300px}
+th,td{padding:4px 14px 4px 0;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{font:600 13px var(--f-data);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.notes{font-size:14px;color:var(--ink-2)}
+.notes ul{max-width:78ch;margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">3D patient flow simulation</p>
+      <h1>15-Bed Emergency Department</h1>
+    </div>
+    <span class="tag">Synthetic patients</span>
+  </header>
+
+  <div class="bar">
+    <div class="clock">
+      <span class="day" id="clk-day">Day 1</span>
+      <span class="time" id="clk-time">13:00</span>
+      <span class="shift" id="clk-shift"></span>
+    </div>
+    <div class="transport">
+      <button class="btn primary" id="btn-play" type="button">Pause</button>
+      <div class="seg" role="radiogroup" aria-label="Simulation speed in simulated minutes per second">
+        <input type="radio" name="speed" id="sp-1" value="1"><label for="sp-1">1</label>
+        <input type="radio" name="speed" id="sp-4" value="4" checked><label for="sp-4">4</label>
+        <input type="radio" name="speed" id="sp-12" value="12"><label for="sp-12">12</label>
+        <input type="radio" name="speed" id="sp-30" value="30"><label for="sp-30">30</label>
+      </div>
+      <span class="seg-cap">sim min per second</span>
+      <button class="btn" id="btn-reset" type="button">Restart</button>
+    </div>
+  </div>
+
+  <section class="kpis" aria-label="Department status">
+    <div class="kpi" id="k-census"><span class="k">In department</span><span class="v"></span><span class="s"></span></div>
+    <div class="kpi" id="k-beds"><span class="k">Beds occupied</span><span class="v"></span><span class="s"></span></div>
+    <div class="kpi" id="k-wait"><span class="k">Waiting for a bed</span><span class="v"></span><span class="s"></span></div>
+    <div class="kpi" id="k-board"><span class="k">Boarding</span><span class="v"></span><span class="s"></span></div>
+    <div class="kpi" id="k-d2p"><span class="k">Door to provider</span><span class="v"></span><span class="s"></span></div>
+    <div class="kpi" id="k-los"><span class="k">LOS, discharged</span><span class="v"></span><span class="s"></span></div>
+    <div class="kpi" id="k-lwbs"><span class="k">LWBS</span><span class="v"></span><span class="s"></span></div>
+    <div class="kpi" id="k-util"><span class="k">Provider utilization</span><span class="v"></span><span class="s"></span></div>
+  </section>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel viewpanel">
+        <div class="view" id="view">
+          <div class="labels" id="labels"></div>
+          <div class="viewbtns">
+            <button class="btn sm" id="btn-angle" type="button">Angled</button>
+            <button class="btn sm" id="btn-top" type="button">Top down</button>
+          </div>
+          <p class="nogl" id="nogl" hidden>The 3D view needs WebGL, which is turned off in this browser. The simulation is still running and the numbers on this page stay live.</p>
+        </div>
+        <div class="viewfoot">
+          <p class="small muted">Drag to orbit, scroll or pinch to zoom, right-drag or two-finger drag to pan. Click a patient or a bed to follow that visit.</p>
+          <div class="legend">
+            <div class="grp"><span class="gh">Patients by acuity</span>
+              <span class="i"><span class="dot" style="background:var(--esi1)"></span>ESI 1</span>
+              <span class="i"><span class="dot" style="background:var(--esi2)"></span>2</span>
+              <span class="i"><span class="dot" style="background:var(--esi3)"></span>3</span>
+              <span class="i"><span class="dot" style="background:var(--esi4)"></span>4</span>
+              <span class="i"><span class="dot" style="background:var(--esi5)"></span>5</span>
+            </div>
+            <div class="grp"><span class="gh">Staff</span>
+              <span class="i"><span class="sq" style="background:var(--st-md)"></span>Provider</span>
+              <span class="i"><span class="sq" style="background:var(--st-rn)"></span>Nurse</span>
+              <span class="i"><span class="sq" style="background:var(--st-evs)"></span>Cleaning tech</span>
+            </div>
+            <div class="grp"><span class="gh">Bed floor</span>
+              <span class="i"><span class="pad" style="background:var(--pad-wait)"></span>Waiting on staff <b id="lg-wait">0</b></span>
+              <span class="i"><span class="pad" style="background:var(--pad-care)"></span>In treatment <b id="lg-care">0</b></span>
+              <span class="i"><span class="pad" style="background:var(--pad-board)"></span>Boarding <b id="lg-board">0</b></span>
+              <span class="i"><span class="pad" style="background:var(--pad-dirty)"></span>Needs cleaning <b id="lg-dirty">0</b></span>
+              <span class="i">Open <b id="lg-open">0</b></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Census, last 24 hours</h2>
+          <div class="chart-legend">
+            <span><i style="background:var(--c1)"></i>In beds</span>
+            <span><i style="background:var(--c2)"></i>Boarding</span>
+            <span><i style="background:var(--c3)"></i>Waiting room</span>
+          </div>
+        </div>
+        <div class="chart" id="chart"><div class="tip" id="tip" hidden></div></div>
+        <details id="tbl-details">
+          <summary>Show hourly values as a table</summary>
+          <div class="tbl-wrap"><table id="tbl"></table></div>
+        </details>
+      </section>
+
+      <section class="panel notes">
+        <h2>What the model assumes</h2>
+        <ul>
+          <li>The floor has 2 resuscitation bays, 9 acute care beds and 4 fast track beds around a central nurses' station, plus one triage room, one CT scanner and a 15-seat waiting room.</li>
+          <li>Arrivals follow a typical ED daily curve, quiet before dawn and busiest from late morning into the evening. About 15% come by ambulance and skip the waiting room.</li>
+          <li>Acuity uses the five-level Emergency Severity Index. ESI 1 goes to resuscitation, ESI 2 and 3 to acute care, ESI 4 and 5 to fast track, with overflow between zones when one is full.</li>
+          <li>Each step needs the right person at the bedside: a nurse for the first assessment, labs and medications, and discharge teaching; a provider for the evaluation and the disposition. Patients wait in bed when that person is busy.</li>
+          <li>Some patients go to CT during their workup. Admitted patients board in their ED bed until an inpatient bed opens, and one cleaning tech turns over each bed before the next patient.</li>
+          <li>Providers drop to half strength from 23:00 to 07:00. Lower-acuity patients leave without being seen when the wait outlasts their patience.</li>
+          <li>Walking is sped up for visibility and does not add to visit times. All patients and timings are generated, and the parameters are illustrative, not calibrated to a real hospital.</li>
+        </ul>
+      </section>
+    </div>
+
+    <aside class="col">
+      <section class="panel">
+        <h2>Scenario</h2>
+        <div class="lever">
+          <label for="in-arrivals">Arrivals per day</label><output id="out-arrivals" for="in-arrivals"></output>
+          <input type="range" id="in-arrivals" min="30" max="110" step="5" value="60">
+        </div>
+        <div class="lever">
+          <label for="in-providers">Providers on day shift</label><output id="out-providers" for="in-providers"></output>
+          <input type="range" id="in-providers" min="1" max="5" step="1" value="2">
+        </div>
+        <div class="lever">
+          <label for="in-nurses">Nurses on the floor</label><output id="out-nurses" for="in-nurses"></output>
+          <input type="range" id="in-nurses" min="1" max="6" step="1" value="3">
+        </div>
+        <div class="lever">
+          <label for="in-board">Wait for an inpatient bed</label><output id="out-board" for="in-board"></output>
+          <input type="range" id="in-board" min="0.5" max="8" step="0.5" value="2.5">
+          <span class="hint">Median boarding time for newly admitted patients.</span>
+        </div>
+        <div class="surge">
+          <button class="btn" id="btn-surge" type="button">Send multi-vehicle crash</button>
+          <span class="small muted">5 trauma patients arrive by ambulance at once.</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Patient</h2>
+        <div id="detail"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Waiting for a bed</h2><span class="small muted" id="w-count"></span></div>
+        <div class="wlist" id="wlist"></div>
+        <p class="small muted" id="w-more" hidden></p>
+      </section>
+
+      <section class="panel">
+        <h2>Activity</h2>
+        <ol class="feed" id="feed"></ol>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script id="engine">
+const EDSim = (() => {
+  const BEDS = [['R1','R'],['R2','R'],['A1','A'],['A2','A'],['A3','A'],['A4','A'],['A5','A'],['A6','A'],['A7','A'],['A8','A'],['A9','A'],['F1','F'],['F2','F'],['F3','F'],['F4','F']];
+  const NBEDS = BEDS.length;
+  const HOURLY = (() => {
+    const w = [.55,.45,.40,.35,.33,.36,.48,.70,.95,1.20,1.40,1.50,1.50,1.45,1.40,1.38,1.38,1.40,1.42,1.38,1.25,1.10,.90,.70];
+    const mean = w.reduce((a,b)=>a+b,0)/24;
+    return w.map(x=>x/mean);
+  })();
+  const ESI_EMS  = [.05,.42,.43,.09,.01];
+  const ESI_WALK = [.003,.15,.46,.31,.077];
+  const ADMIT    = [0,.85,.45,.22,.03,.005];
+  const EVAL_MED = [0,30,22,17,11,8];
+  const WORK_MED = [0,120,140,110,35,12];
+  const CT_P     = [0,.7,.4,.3,.04,0];
+  const PATIENCE = [0,0,0,240,170,130];
+  const CC = {
+    adult: {
+      1:[['Cardiac arrest'],['Major trauma'],['Respiratory failure'],['STEMI'],['Stroke alert'],['Overdose, unresponsive'],['Septic shock']],
+      2:[['Chest pain'],['Shortness of breath'],['Altered mental status'],['GI bleed'],['Suspected sepsis'],['Stroke symptoms'],['Syncope'],['Suicidal ideation']],
+      3:[['Abdominal pain'],['Flank pain'],['Cough and fever'],['Fall with hip pain'],['Vomiting and dehydration'],['Headache'],['Cellulitis'],['Dizziness'],['Back pain']],
+      4:[['Laceration'],['Ankle injury'],['Urinary symptoms'],['Sore throat'],['Wrist injury'],['Minor burn'],['Ear pain'],['Dental pain']],
+      5:[['Medication refill'],['Suture removal'],['Rash'],['Cold symptoms'],['Wound check']],
+    },
+    peds: {
+      1:[['Status epilepticus'],['Severe respiratory distress']],
+      2:[['Asthma exacerbation'],['Dehydration'],['Head injury']],
+      3:[['Fever'],['Abdominal pain'],['Croup'],['Forearm fracture'],['Vomiting']],
+      4:[['Ear pain'],['Laceration'],['Sore throat'],['Rash']],
+      5:[['Cold symptoms'],['Rash']],
+    },
+  };
+  const CRASH_CC = ['Multi-vehicle crash trauma','Chest wall injury','Pelvic injury','Head injury'];
+
+  function rnd(S){
+    S.seed = (S.seed + 0x6D2B79F5) | 0;
+    let t = S.seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+  function gauss(S){ let u = 0; while (u === 0) u = rnd(S); return Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*rnd(S)); }
+  function logn(S, med, sig){
+    const v = med * Math.exp(sig * gauss(S));
+    return Math.max(1, Math.round(Math.min(med*4, Math.max(med*0.3, v))));
+  }
+  function poisson(S, lam){ const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= rnd(S); } while (p > L); return k - 1; }
+  function pickIdx(S, w){ let r = rnd(S), i = 0; for (; i < w.length - 1; i++){ r -= w[i]; if (r < 0) break; } return i; }
+  const hourOf = t => Math.floor((((t % 1440) + 1440) % 1440) / 60);
+  const who = p => p.age + ' ' + p.sex;
+  function dur(min){ min = Math.round(min); return min < 60 ? min + 'm' : Math.floor(min/60) + 'h ' + String(min % 60).padStart(2,'0') + 'm'; }
+
+  function create(seed, params){
+    const S = {
+      t:-1440, seed:seed|0, nextId:1,
+      P:Object.assign({perDay:60, providers:2, nurses:3, boardMed:150}, params),
+      patients:[], beds:[], staff:[], done:[], hist:[], log:[], logN:0, arrivals:0, triagePid:null, ctPid:null,
+    };
+    for (const [id, zone] of BEDS) S.beds.push({id, zone, pid:null, dirty:false, dirtyAt:0, cleanUntil:null});
+    S.staff.push({id:'EVS1', role:'evs', n:0, pid:null, bed:null});
+    syncStaff(S);
+    return S;
+  }
+  function syncStaff(S){
+    for (const [role, want, pre] of [['md', S.P.providers, 'MD'], ['rn', S.P.nurses, 'RN']]){
+      const list = S.staff.filter(s => s.role === role);
+      while (list.length < want){ const s = {id:pre + (list.length + 1), role, n:list.length, pid:null, bed:null}; S.staff.push(s); list.push(s); }
+      while (list.length > want && !list[list.length - 1].pid){ const s = list.pop(); S.staff.splice(S.staff.indexOf(s), 1); }
+    }
+  }
+  function log(S, k, m){ S.log.push({t:S.t, k, m}); if (S.log.length > 60) S.log.shift(); S.logN++; }
+  function set(p, state, t, d){ p.state = state; p.since = t; p.until = d != null ? t + Math.max(1, Math.round(d)) : null; }
+  function onDuty(S){ const h = hourOf(S.t); return (h >= 7 && h < 23) ? S.P.providers : Math.ceil(S.P.providers / 2); }
+  function serve(S, p, s, state, d){ s.pid = p.id; p.staff = s.id; set(p, state, S.t, d); }
+  function release(S, p){
+    if (!p.staff) return;
+    const s = S.staff.find(x => x.id === p.staff);
+    if (s) s.pid = null;
+    p.staff = null;
+  }
+
+  function newPatient(S, o){
+    o = o || {};
+    const mode = o.mode || (rnd(S) < .15 ? 'EMS' : 'Walk-in');
+    const esi = o.esi || pickIdx(S, mode === 'EMS' ? ESI_EMS : ESI_WALK) + 1;
+    const peds = !o.cc && rnd(S) < .18;
+    const age = peds ? 1 + Math.floor(rnd(S)*17) : 18 + Math.floor((rnd(S)+rnd(S))/2*76);
+    const list = CC[peds ? 'peds' : 'adult'][esi];
+    const cc = o.cc || list[Math.floor(rnd(S)*list.length)][0];
+    const p = {
+      id:S.nextId++, age, sex:rnd(S) < .5 ? 'F' : 'M', esi, mode, cc,
+      admit:rnd(S) < ADMIT[esi] * (peds ? .5 : 1), ct:rnd(S) < CT_P[esi],
+      state:null, since:S.t, until:null, bed:null, staff:null, workEnd:null,
+      patience:esi >= 3 ? S.t + logn(S, PATIENCE[esi], .6) : null,
+      tArr:S.t, tTriage:null, tBed:null, tProv:null, tCT:null, tReady:null, tDispo:null, tOut:null, outcome:null,
+    };
+    if (mode === 'EMS' || esi === 1){ p.state = 'waiting'; p.tTriage = S.t; } else p.state = 'triageQ';
+    S.patients.push(p); S.arrivals++;
+    if (!o.quiet && (esi === 1 || (mode === 'EMS' && esi === 2))) log(S, mode === 'EMS' ? 'EMS' : 'ESI 1', who(p) + ', ' + p.cc + ', ESI ' + esi);
+    return p;
+  }
+
+  function zonePrefs(p, waited, free){
+    if (p.esi === 1) return ['R','A','F'];
+    if (p.esi === 2) return (free.R >= 2 || waited > 45) ? ['A','R'] : ['A'];
+    if (p.esi === 3) return (waited > 45 && free.F >= 2) ? ['A','F'] : ['A'];
+    return (waited > 60 && free.A >= 3) ? ['F','A'] : ['F'];
+  }
+
+  function depart(S, p, outcome){
+    release(S, p);
+    p.outcome = outcome; p.tOut = S.t; p.state = 'gone'; p.until = null;
+    if (p.bed){
+      const b = S.beds.find(b => b.id === p.bed);
+      b.pid = null; b.dirty = true; b.dirtyAt = S.t;
+    }
+    S.done.push(p);
+  }
+
+  function step(S){
+    const t = ++S.t;
+    syncStaff(S);
+    const n = poisson(S, S.P.perDay / 1440 * HOURLY[hourOf(t)]);
+    for (let i = 0; i < n; i++) newPatient(S);
+
+    let gone = false;
+    for (const p of S.patients){
+      if (p.until != null && t >= p.until){
+        switch (p.state){
+          case 'triage': S.triagePid = null; p.tTriage = t; set(p, 'waiting', t); break;
+          case 'assess': release(S, p); set(p, 'needMD', t); break;
+          case 'eval': release(S, p); set(p, 'needOrders', t); break;
+          case 'orders': {
+            release(S, p);
+            p.workEnd = t + logn(S, WORK_MED[p.esi] * (p.age < 18 ? .8 : 1), .45);
+            if (p.ct) set(p, 'ctWait', t); else set(p, 'workup', t, p.workEnd - t);
+            break;
+          }
+          case 'ct': S.ctPid = null; p.workEnd = Math.max(p.workEnd, t + 20); set(p, 'workup', t, p.workEnd - t); break;
+          case 'workup': p.tReady = t; set(p, 'ready', t); break;
+          case 'dispo':
+            release(S, p); p.tDispo = t;
+            if (p.admit){
+              set(p, 'boarding', t, logn(S, S.P.boardMed * (p.esi === 1 ? .6 : 1), .6));
+              log(S, 'ADMIT', who(p) + ' in ' + p.bed + ', inpatient bed requested');
+            } else set(p, 'needDC', t);
+            break;
+          case 'discharge': depart(S, p, 'discharged'); gone = true; break;
+          case 'boarding':
+            log(S, 'MOVE', p.bed + ' to inpatient unit after ' + dur(t - p.since) + ' boarding');
+            depart(S, p, 'admitted'); gone = true; break;
+        }
+      }
+      if ((p.state === 'triageQ' || p.state === 'waiting') && p.patience != null && t >= p.patience){
+        log(S, 'LWBS', who(p) + ', ' + p.cc + ', left after ' + dur(t - p.tArr));
+        depart(S, p, 'lwbs'); gone = true;
+      }
+    }
+    if (gone){
+      S.patients = S.patients.filter(p => p.state !== 'gone');
+      if (S.done.length && S.done[0].tOut < t - 1440) S.done = S.done.filter(p => p.tOut >= t - 1440);
+    }
+
+    // cleaning
+    const evs = S.staff.find(s => s.role === 'evs');
+    for (const b of S.beds) if (b.cleanUntil != null && t >= b.cleanUntil){ b.cleanUntil = null; b.dirty = false; if (evs.bed === b.id) evs.bed = null; }
+    if (!evs.bed){
+      let pick = null;
+      for (const b of S.beds) if (b.dirty && b.cleanUntil == null && (!pick || b.dirtyAt < pick.dirtyAt)) pick = b;
+      if (pick){ pick.cleanUntil = t + logn(S, 10, .25); evs.bed = pick.id; }
+    }
+
+    // triage, one nurse and one room
+    if (S.triagePid == null){
+      const p = S.patients.find(p => p.state === 'triageQ');
+      if (p){ S.triagePid = p.id; set(p, 'triage', t, 4 + rnd(S)*5); }
+    }
+
+    // bed assignment, sickest first
+    const free = {R:0, A:0, F:0};
+    for (const b of S.beds) if (!b.pid && !b.dirty) free[b.zone]++;
+    const q = S.patients.filter(p => p.state === 'waiting').sort((a,b) => a.esi - b.esi || a.tArr - b.tArr);
+    for (const p of q){
+      for (const z of zonePrefs(p, t - p.tArr, free)){
+        if (free[z] > 0){
+          const b = S.beds.find(b => b.zone === z && !b.pid && !b.dirty);
+          b.pid = p.id; p.bed = b.id; p.tBed = t; free[z]--;
+          set(p, p.esi === 1 ? 'needMD' : 'needRN', t);
+          break;
+        }
+      }
+    }
+
+    // CT, one scanner
+    if (S.ctPid == null){
+      let pick = null;
+      for (const p of S.patients) if (p.state === 'ctWait' && (!pick || p.esi < pick.esi || (p.esi === pick.esi && p.since < pick.since))) pick = p;
+      if (pick){ S.ctPid = pick.id; pick.tCT = t; set(pick, 'ct', t, logn(S, 18, .25)); }
+    }
+
+    // providers: evaluations and dispositions share one queue
+    const duty = onDuty(S);
+    const mdIdle = S.staff.filter(s => s.role === 'md' && !s.pid && s.n < duty);
+    if (mdIdle.length){
+      const key = p => p.since - (p.esi === 1 ? 1e6 : p.esi === 2 ? 20 : 0);
+      const pq = S.patients.filter(p => p.state === 'needMD' || p.state === 'ready').sort((a,b) => key(a) - key(b));
+      for (const p of pq){
+        const s = mdIdle.shift(); if (!s) break;
+        if (p.state === 'needMD'){ p.tProv = t; serve(S, p, s, 'eval', logn(S, EVAL_MED[p.esi], .3)); }
+        else serve(S, p, s, 'dispo', logn(S, 10, .3));
+      }
+    }
+    // nurses: assessment, orders, discharge
+    const rnIdle = S.staff.filter(s => s.role === 'rn' && !s.pid);
+    if (rnIdle.length){
+      const nq = S.patients.filter(p => p.state === 'needRN' || p.state === 'needOrders' || p.state === 'needDC')
+        .sort((a,b) => (a.esi === 1 ? 0 : 1) - (b.esi === 1 ? 0 : 1) || a.since - b.since);
+      for (const p of nq){
+        const s = rnIdle.shift(); if (!s) break;
+        if (p.state === 'needRN') serve(S, p, s, 'assess', logn(S, 6, .3));
+        else if (p.state === 'needOrders') serve(S, p, s, 'orders', logn(S, p.esi === 5 ? 4 : 8, .3));
+        else serve(S, p, s, 'discharge', logn(S, 12, .3));
+      }
+    }
+
+    if (t % 5 === 0){
+      let b = 0, w = 0, a = 0, pb = 0, nb = 0, nn = 0;
+      for (const p of S.patients){ if (p.bed) b++; else w++; if (p.state === 'boarding') a++; }
+      for (const s of S.staff){ if (s.role === 'md' && s.pid) pb++; if (s.role === 'rn'){ nn++; if (s.pid) nb++; } }
+      S.hist.push({t, b, w, a, pb, po:duty, nb, nn});
+      if (S.hist.length > 289) S.hist.shift();
+    }
+  }
+
+  function surge(S){
+    for (const esi of [1,2,2,3,3]) newPatient(S, {mode:'EMS', esi, cc:CRASH_CC[Math.floor(rnd(S)*CRASH_CC.length)], quiet:true});
+    log(S, 'CRASH', 'Multi-vehicle crash: 5 trauma patients arriving by ambulance');
+  }
+
+  const GROUP = {needRN:'wait', needMD:'wait', needOrders:'wait', ready:'wait', needDC:'wait', ctWait:'wait',
+                 assess:'care', eval:'care', orders:'care', workup:'care', ct:'care', dispo:'care', discharge:'care', boarding:'board'};
+  function median(a){ if (!a.length) return null; a.sort((x,y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : (a[m-1] + a[m]) / 2; }
+
+  function metrics(S){
+    const t = S.t, W = 480;
+    let inBed = 0, waiting = 0, boarding = 0, longWait = 0, longBoard = 0;
+    const by = {wait:0, care:0, board:0};
+    const d2p = [], los = [];
+    for (const p of S.patients){
+      if (p.bed){
+        inBed++; by[GROUP[p.state]]++;
+        if (p.state === 'boarding'){ boarding++; longBoard = Math.max(longBoard, t - p.since); }
+      } else { waiting++; longWait = Math.max(longWait, t - p.tArr); }
+      if (p.tProv != null && p.tProv >= t - W) d2p.push(p.tProv - p.tArr);
+    }
+    let out = 0, lwbs = 0;
+    for (const p of S.done){
+      if (p.tProv != null && p.tProv >= t - W) d2p.push(p.tProv - p.tArr);
+      if (p.tOut >= t - W){
+        out++;
+        if (p.outcome === 'lwbs') lwbs++;
+        if (p.outcome === 'discharged') los.push(p.tOut - p.tArr);
+      }
+    }
+    let dirty = 0;
+    for (const b of S.beds) if (b.dirty) dirty++;
+    let pb = 0, po = 0, nb = 0, nn = 0;
+    for (const h of S.hist.slice(-96)){ pb += h.pb; po += h.po; nb += h.nb; nn += h.nn; }
+    let mdBusy = 0, rnBusy = 0, rnOn = 0;
+    for (const s of S.staff){ if (s.role === 'md' && s.pid) mdBusy++; if (s.role === 'rn'){ rnOn++; if (s.pid) rnBusy++; } }
+    return {
+      total:inBed + waiting, inBed, waiting, boarding, dirty, open:NBEDS - inBed - dirty, by, longWait, longBoard,
+      d2p:median(d2p), los:median(los), lwbsPct:out ? lwbs/out*100 : 0, lwbs, out,
+      mdUtil:po ? pb/po*100 : 0, rnUtil:nn ? nb/nn*100 : 0, mdOn:onDuty(S), mdBusy, rnOn, rnBusy,
+    };
+  }
+
+  return {NBEDS, GROUP, create, step, surge, metrics, onDuty, hourOf, dur};
+})();
+</script>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const NAME = {
+    triageQ:'Waiting for triage', triage:'In triage', waiting:'Waiting for a bed',
+    needRN:'Waiting for a nurse assessment', assess:'Nurse assessment', needMD:'Waiting for a provider', eval:'Provider evaluation',
+    needOrders:'Waiting for a nurse to start orders', orders:'Labs and medications', workup:'Workup in progress',
+    ctWait:'Waiting for CT', ct:'In CT', ready:'Results back, waiting for a provider', dispo:'Disposition with provider',
+    needDC:'Waiting for a nurse to discharge', discharge:'Discharge teaching', boarding:'Boarding for an inpatient bed',
+  };
+  const clock = t => { const m = ((t % 1440) + 1440) % 1440; return String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m % 60).padStart(2,'0'); };
+  const hm = min => { min = Math.max(0, Math.round(min)); return Math.floor(min/60) + ':' + String(min % 60).padStart(2,'0'); };
+  const dur = EDSim.dur;
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  let S, sel = null, byId = new Map();
+  let playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let speed = 4, acc = 0, last = null, dirty = true, lastRender = 0, snap = true;
+
+  function fresh(seed, params){
+    const s = EDSim.create(seed, params);
+    while (s.t < 780) EDSim.step(s);
+    return s;
+  }
+
+  /* ================= floor plan and walking graph ================= */
+  const BED = {};
+  (() => {
+    const add = (id, x, z, hx, hz) => BED[id] = {id, x, z, hx, hz};
+    [12,15.6,19.2,22.8,26.4,30].forEach((x,i) => add('A'+(i+1), x, 2.5, 0, -1));
+    [6.8,10.4,14].forEach((z,i) => add('A'+(i+7), 2.6, z, -1, 0));
+    add('R1', 37.2, 5.5, 1, 0); add('R2', 37.2, 10.5, 1, 0);
+    [20,23.6,27.2,30.8].forEach((x,i) => add('F'+(i+1), x, 21.4, 0, 1));
+  })();
+  const RX0 = 7.5, RX1 = 33.5, RZ0 = 6.5, RZ1 = 14.5;
+  const G = {n:{}, adj:{}}, ring = [];
+  function node(id, x, z, extra){ G.n[id] = Object.assign({id, x, z}, extra); G.adj[id] = []; return id; }
+  function edge(a, b){ const A = G.n[a], B = G.n[b], d = Math.hypot(A.x-B.x, A.z-B.z); G.adj[a].push([b,d]); G.adj[b].push([a,d]); }
+  function ringNode(id, x, z){ node(id, x, z); ring.push(id); return id; }
+  (() => {
+    ringNode('nw', RX0, RZ0); ringNode('ne', RX1, RZ0); ringNode('se', RX1, RZ1); ringNode('sw', RX0, RZ1);
+    for (const b of Object.values(BED)){
+      let ax, az;
+      if (b.hz === -1){ ax = b.x; az = RZ0; } else if (b.hz === 1){ ax = b.x; az = RZ1; }
+      else if (b.hx === -1){ ax = RX0; az = Math.min(RZ1 - .3, Math.max(RZ0 + .3, b.z)); }
+      else { ax = RX1; az = Math.min(RZ1 - .3, Math.max(RZ0 + .3, b.z)); }
+      const sx = b.hz, sz = -b.hx; // sideways
+      ringNode(b.id + ':att', ax, az);
+      node(b.id + ':ent', b.x - b.hx*2.3, b.z - b.hz*2.3);
+      node(b.id, b.x, b.z, {lie:{hx:b.hx, hz:b.hz, y:.86}});
+      node(b.id + ':md', b.x + sx*1.1, b.z + sz*1.1, {look:b});
+      node(b.id + ':rn', b.x - sx*1.1, b.z - sz*1.1, {look:b});
+      node(b.id + ':evs', b.x - b.hx*1.5, b.z - b.hz*1.5, {look:b});
+      edge(b.id + ':att', b.id + ':ent');
+      for (const k of ['', ':md', ':rn', ':evs']) edge(b.id + ':ent', b.id + k);
+    }
+    // waiting room, triage, entrance
+    ringNode('s1', 10.5, RZ1); node('wdoor', 10.5, 15.8); node('lobby', 10.5, 20.5); node('door', 10.5, 24); node('out', 10.5, 27.5);
+    edge('s1','wdoor'); edge('wdoor','lobby'); edge('lobby','door'); edge('door','out');
+    node('tri', 13.3, 20.5, {sit:true}); edge('lobby','tri');
+    const cols = [8.6, 6.8, 5, 3.2, 1.4];
+    for (const [ai, az] of [[1,19.1],[2,21.3]]){
+      node('ai'+ai, 9.6, az); edge('lobby', 'ai'+ai);
+      cols.forEach((x, c) => { node('ai'+ai+'_'+c, x, az); edge(c ? 'ai'+ai+'_'+(c-1) : 'ai'+ai, 'ai'+ai+'_'+c); });
+    }
+    [18, 20.2, 22.4].forEach((z, r) => cols.forEach((x, c) => {
+      const id = 'ch' + (r*5 + c);
+      node(id, x, z, {sit:true}); edge(id, 'ai' + (r === 0 ? 1 : r === 2 ? 2 : (c % 2 ? 1 : 2)) + '_' + c);
+    }));
+    [[9.3,17.2],[11.3,17.4],[9.3,23],[11.4,22.9],[11.4,18.6],[8.2,17]].forEach(([x,z], i) => { node('st'+i, x, z); edge('lobby', 'st'+i); });
+    // CT
+    ringNode('ct:att', 9, RZ0); node('ctdoor', 9, 5); node('ct', 5.6, 2.5, {lie:{hx:-1, hz:0, y:1.06}});
+    edge('ct:att','ctdoor'); edge('ctdoor','ct');
+    // inpatient exit
+    ringNode('ip:att', 33.1, RZ0); node('ipdoor', 33.1, 0); node('ipout', 33.1, -3.5); edge('ip:att','ipdoor'); edge('ipdoor','ipout');
+    // ambulance entrance, holding spots, staff room
+    node('ves', 36.5, 14.5); node('ambdoor', 40, 14.5); node('ambout', 41.4, 14.5);
+    edge('se','ves'); edge('ves','ambdoor'); edge('ambdoor','ambout');
+    [[35.2,13.75],[37.7,13.75],[39,13.75],[35.2,15.4],[37.7,15.4],[39,15.4]].forEach(([x,z], i) => { node('h'+i, x, z); edge('ves', 'h'+i); });
+    node('sdoor', 36.5, 16.5); node('sroom', 36.5, 18.4); edge('ves','sdoor'); edge('sdoor','sroom');
+    for (let i = 0; i < 5; i++){ node('lg'+i, 34.2 + i*1.15, 21); edge('sroom', 'lg'+i); }
+    // nurses' station homes
+    for (let i = 0; i < 5; i++){ ringNode('md'+i+':att', 16.5 + i*2, RZ0); node('md'+i, 16.5 + i*2, 8.3); edge('md'+i+':att', 'md'+i); }
+    for (let i = 0; i < 6; i++){ ringNode('rn'+i+':att', 15.5 + i*2, RZ1); node('rn'+i, 15.5 + i*2, 12.7); edge('rn'+i+':att', 'rn'+i); }
+    ringNode('evs0:att', 12.6, RZ0); node('evs0', 12.6, 10.5); edge('evs0:att', 'evs0');
+    // close the corridor loop
+    const W = RX1 - RX0, H = RZ1 - RZ0;
+    const sOf = p => Math.abs(p.z - RZ0) < .01 ? p.x - RX0 : Math.abs(p.x - RX1) < .01 ? W + p.z - RZ0 : Math.abs(p.z - RZ1) < .01 ? W + H + RX1 - p.x : 2*W + H + RZ1 - p.z;
+    ring.sort((a, b) => sOf(G.n[a]) - sOf(G.n[b]));
+    ring.forEach((id, i) => edge(id, ring[(i + 1) % ring.length]));
+  })();
+  const pathCache = new Map();
+  function findPath(a, b){
+    if (a === b) return [];
+    const key = a + '>' + b;
+    if (pathCache.has(key)) return pathCache.get(key);
+    const dist = {}, prev = {}, open = new Set(Object.keys(G.n));
+    for (const k of open) dist[k] = Infinity;
+    dist[a] = 0;
+    while (open.size){
+      let u = null;
+      for (const k of open) if (u === null || dist[k] < dist[u]) u = k;
+      if (u === b || dist[u] === Infinity) break;
+      open.delete(u);
+      for (const [v, d] of G.adj[u]) if (dist[u] + d < dist[v]){ dist[v] = dist[u] + d; prev[v] = u; }
+    }
+    const out = [];
+    for (let u = b; u !== a && u != null; u = prev[u]) out.unshift(u);
+    pathCache.set(key, out);
+    return out;
+  }
+
+  /* ================= 3D scene ================= */
+  const T = window.THREE;
+  let three = null;
+  const MAT = {}, agents = new Map(), labels = [];
+  const slots = {ch:Array(15).fill(null), st:Array(6).fill(null), h:Array(6).fill(null)};
+  const CH_ORDER = [7, 1, 13, 4, 10, 2, 8, 14, 0, 6, 12, 3, 9, 5, 11];
+  const UP = T ? new T.Vector3(0, 1, 0) : null;
+
+  function mat(token, opts){
+    if (MAT[token]) return MAT[token];
+    const m = opts && opts.basic ? new T.MeshBasicMaterial(opts.params || {}) : new T.MeshLambertMaterial();
+    m.userData.token = token;
+    m.color.set(css(token));
+    return MAT[token] = m;
+  }
+  function applyTheme(){
+    if (!three) return;
+    for (const k in MAT) MAT[k].color.set(css(MAT[k].userData.token));
+    three.renderer.setClearColor(css('--sc-ground'));
+    if (three.grid) three.scene.remove(three.grid);
+    const g = css('--sc-grid');
+    three.grid = new T.GridHelper(120, 60, g, g);
+    three.grid.position.set(22, .01, 12);
+    three.scene.add(three.grid);
+  }
+  function box(w, h, d, m, x, y, z, parent){
+    const mesh = new T.Mesh(new T.BoxGeometry(w, h, d), m);
+    mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true;
+    (parent || three.scene).add(mesh);
+    return mesh;
+  }
+  function flat(x0, z0, x1, z1, m, y){
+    const mesh = new T.Mesh(new T.PlaneGeometry(x1 - x0, z1 - z0), m);
+    mesh.rotation.x = -Math.PI/2; mesh.position.set((x0+x1)/2, y, (z0+z1)/2); mesh.receiveShadow = true;
+    three.scene.add(mesh);
+    return mesh;
+  }
+  function wall(x0, z0, x1, z1, h){
+    const len = Math.hypot(x1-x0, z1-z0);
+    const m = box(x0 === x1 ? .14 : len, h, x0 === x1 ? len : .14, mat('--sc-wall'), (x0+x1)/2, h/2, (z0+z1)/2);
+    return m;
+  }
+  function label(text, x, y, z, cls){
+    const el = document.createElement('div');
+    el.className = 'lbl' + (cls ? ' ' + cls : '');
+    el.textContent = text;
+    $('labels').appendChild(el);
+    const l = {el, v:new T.Vector3(x, y, z)};
+    labels.push(l);
+    return l;
+  }
+
+  function initScene(){
+    if (!T || !T.OrbitControls) return false;
+    const host = $('view');
+    let renderer;
+    try { renderer = new T.WebGLRenderer({antialias:true}); } catch (e){ return false; }
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+    renderer.domElement.setAttribute('aria-label', '3D view of the emergency department floor');
+    host.prepend(renderer.domElement);
+    const scene = new T.Scene();
+    const camera = new T.PerspectiveCamera(38, 1.6, .5, 500);
+    const controls = new T.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; controls.dampingFactor = .09;
+    controls.maxPolarAngle = Math.PI/2 - .06; controls.minDistance = 8; controls.maxDistance = 150;
+    scene.add(new T.HemisphereLight(0xffffff, 0x8a98a4, .72));
+    const sun = new T.DirectionalLight(0xffffff, .5);
+    sun.position.set(8, 42, 30); sun.target.position.set(22, 0, 12);
+    sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(sun.shadow.camera, {left:-34, right:34, top:28, bottom:-28, near:1, far:120});
+    sun.shadow.bias = -.0006;
+    scene.add(sun, sun.target);
+    three = {renderer, scene, camera, controls, ray:new T.Raycaster(), pick:[], pads:{}, grid:null};
+
+    // ground and floor
+    flat(-40, -30, 84, 54, mat('--sc-ground'), 0);
+    flat(0, 0, 40, 24, mat('--sc-floor'), .02);
+    flat(0, 15.8, 18.2, 24, mat('--sc-zpublic'), .03);
+    flat(34.6, 3, 40, 13, mat('--sc-zresus'), .03);
+    flat(18.2, 16.5, 32.6, 24, mat('--sc-zfast'), .03);
+    flat(0, 0, 10.2, 5, mat('--sc-zsupport'), .03);
+    flat(32.6, 16.5, 40, 24, mat('--sc-zsupport'), .03);
+    // door thresholds
+    for (const [x0,z0,x1,z1] of [[9.7,23.8,11.3,24.4],[39.8,13.6,40.4,15.4],[32.3,-.3,33.9,.3]]) flat(x0, z0, x1, z1, mat('--sc-door'), .04);
+
+    // walls
+    const O = 1.5, I = 1.15;
+    [[0,0,32.3,0],[33.9,0,40,0],[40,0,40,13.6],[40,15.4,40,24],[0,24,9.7,24],[11.3,24,40,24],[0,0,0,24]].forEach(w => wall(...w, O));
+    [[10.2,0,10.2,5],[0,5,8.3,5],[9.7,5,10.2,5]].forEach(w => wall(...w, I));
+    [13.8,17.4,21,24.6,28.2,31.8].forEach(x => wall(x, 0, x, 4.4, I));
+    [8.6,12.2].forEach(z => wall(0, z, 5, z, I));
+    [3,8,13].forEach(z => wall(35.2, z, 40, z, I));
+    [[0,15.8,9.7,15.8],[11.3,15.8,18.2,15.8],[18.2,15.8,18.2,24],[12,15.8,12,19.6],[12,21.4,12,24]].forEach(w => wall(...w, I));
+    [21.8,25.4,29].forEach(x => wall(x, 17.6, x, 24, I));
+    [[32.6,16.5,32.6,24],[32.6,16.5,35.8,16.5],[37.2,16.5,40,16.5]].forEach(w => wall(...w, I));
+
+    // beds
+    for (const b of Object.values(BED)){
+      const alongX = b.hx !== 0;
+      const g = new T.Group(); g.position.set(b.x, 0, b.z);
+      const L = 2.1, Wd = .95;
+      box(alongX ? L : Wd, .34, alongX ? Wd : L, mat('--sc-frame'), 0, .3, 0, g).userData.bed = b.id;
+      box(alongX ? L - .1 : Wd - .08, .14, alongX ? Wd - .08 : L - .1, mat('--sc-mattress'), 0, .54, 0, g).userData.bed = b.id;
+      box(alongX ? .4 : .6, .1, alongX ? .6 : .4, mat('--sc-pillow'), b.hx*.78, .66, b.hz*.78, g);
+      box(alongX ? .08 : Wd, .7, alongX ? Wd : .08, mat('--sc-frame'), b.hx*1.08, .55, b.hz*1.08, g);
+      three.scene.add(g);
+      g.children.forEach(c => { if (c.userData.bed) three.pick.push(c); });
+      const pm = new T.MeshBasicMaterial({transparent:true, opacity:.55, depthWrite:false});
+      const pad = new T.Mesh(new T.PlaneGeometry(alongX ? 4.5 : 3.2, alongX ? 3.2 : 4.5), pm);
+      pad.rotation.x = -Math.PI/2; pad.position.set(b.x - b.hx*.25, .05, b.z - b.hz*.25); pad.visible = false;
+      pad.userData.bed = b.id;
+      three.scene.add(pad); three.pads[b.id] = pad; three.pick.push(pad);
+      b.label = label(b.id, b.x + b.hx*.9, 1.7, b.z + b.hz*.9);
+    }
+    // waiting room chairs
+    for (let i = 0; i < 15; i++){
+      const n = G.n['ch'+i];
+      box(.55, .42, .55, mat('--sc-chair'), n.x, .21, n.z);
+      box(.55, .5, .1, mat('--sc-chair'), n.x, .67, n.z - .27);
+    }
+    // triage desk, nurses' station, CT, ambulance
+    box(.8, .8, 1.8, mat('--sc-furn'), 14.5, .4, 20.5); box(.9, .06, 1.9, mat('--sc-top'), 14.5, .83, 20.5);
+    box(12, 1.02, 2.5, mat('--sc-furn'), 20.5, .51, 10.5); box(12.3, .07, 2.8, mat('--sc-top'), 20.5, 1.05, 10.5);
+    for (let i = 0; i < 4; i++) box(.55, .4, .06, mat('--sc-dark'), 16.5 + i*2.6, 1.3, 10.5);
+    const gantry = new T.Mesh(new T.TorusGeometry(1.05, .34, 14, 32), mat('--sc-mattress'));
+    gantry.rotation.y = Math.PI/2; gantry.position.set(3.4, 1.25, 2.5); gantry.castShadow = true; three.scene.add(gantry);
+    box(1, .5, 2.9, mat('--sc-mattress'), 3.4, .25, 2.5);
+    box(3.4, .16, .7, mat('--sc-top'), 5.2, .82, 2.5); box(.5, .74, .5, mat('--sc-furn'), 5.9, .37, 2.5);
+    box(3.8, 2.1, 2.1, mat('--sc-amb'), 44, 1.5, 14.5); box(1.5, 1.55, 2.1, mat('--sc-amb'), 46.65, 1.22, 14.5);
+    box(3.82, .28, 2.12, mat('--sc-ambstripe'), 44, 1.35, 14.5); box(.5, .6, 1.9, mat('--sc-dark'), 47.2, 1.55, 14.5);
+    for (const x of [42.9, 46.4]) for (const z of [13.5, 15.5]){
+      const w = new T.Mesh(new T.CylinderGeometry(.42, .42, .3, 16), mat('--sc-dark'));
+      w.rotation.x = Math.PI/2; w.position.set(x, .42, z); w.castShadow = true; three.scene.add(w);
+    }
+    box(1.2, .78, .6, mat('--sc-furn'), 36.4, .39, 23.2); box(2.2, .45, .8, mat('--sc-chair'), 38.4, .22, 19.2);
+    // triage nurse stays at the desk
+    const tn = person('rn'); tn.position.set(15.5, 0, 20.5); three.scene.add(tn);
+
+    // zone labels
+    [['Waiting room',4.5,16.9],['Triage',15,17.3],['Fast track',25.4,17.3],['Staff',36.3,22.2],['Resus',37.6,1.5],['Acute care',21,5.5],
+     ['CT',3.4,2.5],["Nurses' station",20.5,10.5],['Entrance',10.5,26],['Ambulance',44.6,14.5],['To inpatient units',33.1,-2.2]]
+      .forEach(([t, x, z]) => label(t, x, t === 'Ambulance' ? 3 : t === 'CT' ? 2.9 : t === "Nurses' station" ? 1.3 : .2, z, 'zone'));
+
+    // selection ring
+    three.selRing = new T.Mesh(new T.RingGeometry(.52, .74, 36), mat('--sc-door', {basic:true, params:{side:T.DoubleSide}}));
+    three.selRing.rotation.x = -Math.PI/2; three.selRing.visible = false; three.scene.add(three.selRing);
+
+    applyTheme();
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+    new MutationObserver(applyTheme).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+    new ResizeObserver(resize3d).observe(host);
+    resize3d(); setView('angle');
+
+    // picking
+    let down = null;
+    const cv = renderer.domElement;
+    cv.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+    cv.addEventListener('pointerup', e => {
+      if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5){ down = null; return; }
+      down = null;
+      const r = cv.getBoundingClientRect();
+      three.ray.setFromCamera({x:(e.clientX - r.left)/r.width*2 - 1, y:-(e.clientY - r.top)/r.height*2 + 1}, camera);
+      const hit = three.ray.intersectObjects(three.pick, false)[0];
+      if (!hit) return;
+      const u = hit.object.userData;
+      let p = null;
+      if (u.pid != null) p = byId.get(u.pid) || null;
+      else if (u.bed){ const b = S.beds.find(x => x.id === u.bed); if (b && b.pid) p = byId.get(b.pid) || null; }
+      if (p){ sel = p; render(); }
+    });
+    return true;
+  }
+  function resize3d(){
+    const host = $('view'), w = host.clientWidth, h = host.clientHeight;
+    if (!w || !h) return;
+    three.renderer.setSize(w, h, false);
+    three.camera.aspect = w / h; three.camera.updateProjectionMatrix();
+  }
+  function setView(kind){
+    const c = three.camera, a = c.aspect || 1.6;
+    const dist = Math.max(46, 76 / a);
+    three.controls.target.set(21.5, 0, 12);
+    if (kind === 'top') c.position.set(21.5, dist * 1.08, 12 + dist * .02);
+    else c.position.set(21.5 - dist*.16, dist*.68, 12 + dist*.72);
+    three.controls.update();
+  }
+
+  const GEO = {};
+  function person(kind, esi){
+    const g = new T.Group();
+    if (!GEO.body){
+      GEO.body = new T.CylinderGeometry(.22, .3, 1.02, 14); GEO.head = new T.SphereGeometry(.23, 14, 10);
+      GEO.torso = new T.BoxGeometry(.56, 1.22, .36);
+    }
+    let body, head;
+    if (kind === 'pt'){
+      const m = mat('--esi' + esi);
+      body = new T.Mesh(GEO.body, m); body.position.y = .56;
+      head = new T.Mesh(GEO.head, m); head.position.y = 1.32;
+    } else {
+      body = new T.Mesh(GEO.torso, mat('--st-' + kind)); body.position.y = .66;
+      head = new T.Mesh(GEO.head, mat('--sc-head')); head.position.y = 1.52;
+    }
+    body.castShadow = head.castShadow = true;
+    g.add(body, head);
+    return g;
+  }
+  function makeAgent(id, kind, start, p){
+    const g = person(kind, p && p.esi);
+    const sc = p && p.age < 13 ? .72 : 1;
+    if (p) g.children.forEach(c => { c.userData.pid = p.id; three.pick.push(c); });
+    three.scene.add(g);
+    const n = G.n[start];
+    const a = {id, kind, g, sc, x:n.x, z:n.z, node:start, route:[], dest:start, face:0, slot:null, leaving:false};
+    agents.set(id, a);
+    return a;
+  }
+  function dropAgent(a){
+    three.scene.remove(a.g);
+    a.g.children.forEach(c => { const i = three.pick.indexOf(c); if (i >= 0) three.pick.splice(i, 1); });
+    freeSlot(a);
+    agents.delete(a.id);
+  }
+  function freeSlot(a){ if (a.slot){ slots[a.slot[0]][a.slot[1]] = null; a.slot = null; } }
+  function takeSlot(a, type){
+    if (a.slot && a.slot[0] === type) return type + a.slot[1];
+    freeSlot(a);
+    const arr = slots[type], order = type === 'ch' ? CH_ORDER : arr.map((_, i) => i);
+    for (const i of order) if (arr[i] == null){ arr[i] = a.id; a.slot = [type, i]; return type + i; }
+    return null;
+  }
+  function go(a, dest){
+    if (a.dest === dest) return;
+    a.dest = dest;
+    if (snap){ const n = G.n[dest]; a.x = n.x; a.z = n.z; a.node = dest; a.route = []; return; }
+    if (a.route.length){ const first = a.route[0]; a.route = [first].concat(findPath(first, dest)); }
+    else a.route = findPath(a.node, dest);
+  }
+  function ptDest(p, a){
+    if (p.bed){ freeSlot(a); return p.state === 'ct' ? 'ct' : p.bed; }
+    if (p.state === 'triage') return 'tri';
+    if (p.mode === 'EMS') return takeSlot(a, 'h') || 'ves';
+    return takeSlot(a, 'ch') || takeSlot(a, 'st') || 'lobby';
+  }
+  function syncAgents(){
+    if (!three) return;
+    const live = new Set();
+    for (const p of S.patients){
+      const id = 'p' + p.id; live.add(id);
+      let a = agents.get(id);
+      if (!a) a = makeAgent(id, 'pt', p.mode === 'EMS' ? 'ambout' : 'out', p);
+      go(a, ptDest(p, a));
+    }
+    const duty = EDSim.onDuty(S);
+    for (const s of S.staff){
+      const id = 's' + s.id; live.add(id);
+      let a = agents.get(id);
+      if (!a) a = makeAgent(id, s.role, s.role === 'evs' ? 'evs0' : s.role + s.n);
+      let dest;
+      if (s.role === 'evs') dest = s.bed ? s.bed + ':evs' : 'evs0';
+      else {
+        const p = s.pid ? byId.get(s.pid) : null;
+        if (p && p.bed) dest = p.bed + ':' + s.role;
+        else dest = s.role === 'md' && s.n >= duty ? 'lg' + s.n : s.role + s.n;
+      }
+      go(a, dest);
+    }
+    for (const a of [...agents.values()]){
+      if (live.has(a.id) || a.leaving) continue;
+      if (a.kind !== 'pt' || snap){ dropAgent(a); continue; }
+      const p = S.done.find(d => 'p' + d.id === a.id);
+      a.leaving = true; freeSlot(a);
+      go(a, p && p.outcome === 'admitted' ? 'ipout' : 'out');
+    }
+    for (const b of S.beds){
+      const pad = three.pads[b.id];
+      const p = b.pid ? byId.get(b.pid) : null;
+      const grp = p ? EDSim.GROUP[p.state] : b.dirty ? 'dirty' : null;
+      pad.visible = !!grp;
+      if (grp && pad.userData.grp !== grp){ pad.material.color.set(css('--pad-' + grp)); pad.userData.grp = grp; }
+    }
+    snap = false;
+  }
+  const qv = T ? new T.Vector3() : null;
+  function moveAgents(dt){
+    const stepLen = playing ? 8 * Math.sqrt(speed) * dt : 0;
+    for (const a of [...agents.values()]){
+      let d = stepLen;
+      while (d > 0 && a.route.length){
+        const n = G.n[a.route[0]], dx = n.x - a.x, dz = n.z - a.z, len = Math.hypot(dx, dz);
+        if (len <= d){ a.x = n.x; a.z = n.z; a.node = a.route.shift(); d -= len; }
+        else { a.x += dx/len*d; a.z += dz/len*d; a.face = Math.atan2(dx, dz); d = 0; }
+      }
+      const arrived = !a.route.length, n = G.n[a.dest];
+      if (arrived && a.leaving){ dropAgent(a); continue; }
+      if (arrived && n.lie){
+        qv.set(n.lie.hx, 0, n.lie.hz);
+        a.g.quaternion.setFromUnitVectors(UP, qv);
+        a.g.position.set(n.x - n.lie.hx*.72*a.sc, n.lie.y, n.z - n.lie.hz*.72*a.sc);
+        a.g.scale.setScalar(a.sc);
+      } else {
+        if (arrived && n.look) a.face = Math.atan2(n.look.x - a.x, n.look.z - a.z);
+        a.g.rotation.set(0, a.face, 0);
+        a.g.position.set(a.x, 0, a.z);
+        a.g.scale.set(a.sc, a.sc * (arrived && n.sit ? .8 : 1), a.sc);
+      }
+    }
+    const sa = sel && agents.get('p' + sel.id);
+    three.selRing.visible = !!sa;
+    if (sa){
+      const n = G.n[sa.dest], lying = !sa.route.length && n.lie;
+      three.selRing.position.set(sa.x, lying ? .09 : .07, sa.z);
+      three.selRing.scale.setScalar(lying ? 2.6 : 1);
+    }
+  }
+  const pv = T ? new T.Vector3() : null;
+  function placeLabels(){
+    const host = $('view'), w = host.clientWidth, h = host.clientHeight;
+    for (const l of labels){
+      pv.copy(l.v).project(three.camera);
+      if (pv.z > 1 || pv.z < -1){ l.el.style.visibility = 'hidden'; continue; }
+      l.el.style.visibility = '';
+      l.el.style.transform = `translate(-50%,-50%) translate(${((pv.x*.5 + .5)*w).toFixed(1)}px,${((-pv.y*.5 + .5)*h).toFixed(1)}px)`;
+    }
+  }
+
+  /* ================= page panels ================= */
+  function kpi(id, v, s, level){
+    const el = $(id);
+    el.children[1].innerHTML = v; el.children[2].textContent = s;
+    el.dataset.level = level || '';
+  }
+  const lvl = (x, warn, crit) => x >= crit ? 'crit' : x >= warn ? 'warn' : '';
+  function renderKpis(m){
+    kpi('k-census', m.total, m.inBed + ' in beds, ' + m.waiting + ' waiting');
+    kpi('k-beds', m.inBed + '<small> / 15</small>', Math.round(m.inBed/15*100) + '%, ' + m.dirty + ' need cleaning', lvl(m.inBed, 13, 15));
+    kpi('k-wait', m.waiting, m.waiting ? 'longest ' + dur(m.longWait) : 'no one waiting', lvl(m.waiting, 5, 10));
+    kpi('k-board', m.boarding, m.boarding ? 'longest ' + dur(m.longBoard) : 'no admitted patients held', lvl(m.boarding, 3, 5));
+    kpi('k-d2p', m.d2p == null ? '–' : Math.round(m.d2p) + '<small> min</small>', 'median, trailing 8 h', m.d2p == null ? '' : lvl(m.d2p, 30, 60));
+    kpi('k-los', m.los == null ? '–' : hm(m.los) + '<small> h</small>', 'median, trailing 8 h', m.los == null ? '' : lvl(m.los, 240, 360));
+    kpi('k-lwbs', m.lwbsPct.toFixed(1) + '<small>%</small>', m.lwbs + ' of ' + m.out + ' departures, 8 h', lvl(m.lwbsPct, 2, 5));
+    kpi('k-util', Math.round(m.mdUtil) + '<small>%</small>', 'nurses ' + Math.round(m.rnUtil) + '%, trailing 8 h', lvl(m.mdUtil, 85, 95));
+    $('lg-wait').textContent = m.by.wait; $('lg-care').textContent = m.by.care; $('lg-board').textContent = m.by.board;
+    $('lg-dirty').textContent = m.dirty; $('lg-open').textContent = m.open;
+  }
+  function renderBedLabels(t){
+    if (!three) return;
+    for (const b of S.beds){
+      const p = b.pid ? byId.get(b.pid) : null;
+      const html = b.id + (p ? '<small>' + hm(t - p.tArr) + '</small>' : '');
+      const l = BED[b.id].label;
+      if (l.h !== html){ l.h = html; l.el.innerHTML = html; }
+    }
+  }
+
+  let wKey = '';
+  function renderWaiting(t){
+    const all = S.patients.filter(p => !p.bed).sort((a,b) => a.esi - b.esi || a.tArr - b.tArr);
+    const rows = all.slice(0, 6);
+    const key = rows.map(p => p.id + p.state).join(',') + '|' + (sel ? sel.id : '');
+    const el = $('wlist');
+    if (key !== wKey){
+      wKey = key;
+      el.innerHTML = rows.length ? rows.map(p =>
+        `<button type="button" class="wrow${sel === p ? ' sel' : ''}" data-pid="${p.id}"><span class="esi e${p.esi}">${p.esi}</span><span class="who">${p.age} ${p.sex}, ${p.cc}<span class="sub">${p.mode}, ${NAME[p.state].toLowerCase()}</span></span><span class="wt"></span></button>`).join('')
+        : '<p class="empty">No one is waiting. Arrivals are going straight to a bed.</p>';
+    }
+    rows.forEach((p, i) => {
+      const r = el.children[i];
+      r.lastChild.textContent = hm(t - p.tArr);
+      r.classList.toggle('late', t - p.tArr > 120);
+    });
+    $('w-count').textContent = all.length ? all.length + ' waiting, sickest first' : '';
+    const more = $('w-more');
+    more.hidden = all.length <= 6;
+    if (all.length > 6) more.textContent = 'Plus ' + (all.length - 6) + ' more behind them.';
+  }
+
+  let dHtml = '';
+  function renderDetail(t){
+    let html;
+    const p = sel;
+    if (!p) html = '<p class="empty">Click a patient or an occupied bed in the 3D view, or pick someone from the waiting list, to follow their visit.</p>';
+    else {
+      let meta;
+      if (p.outcome){
+        const o = {discharged:'Discharged', admitted:'Admitted to an inpatient unit', lwbs:'Left without being seen'}[p.outcome];
+        meta = o + '. Length of stay ' + dur(p.tOut - p.tArr) + '.';
+      } else if (p.bed) meta = `Bed ${p.bed}. ${NAME[p.state]} for ${dur(t - p.since)}. In department ${dur(t - p.tArr)}.`;
+      else meta = `${NAME[p.state]}. In department ${dur(t - p.tArr)}.`;
+      const steps = [[p.tArr, 'Arrived', p.mode === 'EMS' ? 'by ambulance' : 'walk-in']];
+      if (p.tTriage != null) steps.push([p.tTriage, 'Triaged ESI ' + p.esi, p.tTriage === p.tArr ? 'on arrival' : dur(p.tTriage - p.tArr) + ' after arrival']);
+      if (p.tBed != null) steps.push([p.tBed, 'Roomed in ' + p.bed, 'door to bed ' + dur(p.tBed - p.tArr)]);
+      if (p.tProv != null) steps.push([p.tProv, 'Provider evaluation', 'door to provider ' + dur(p.tProv - p.tArr)]);
+      if (p.tCT != null) steps.push([p.tCT, 'CT scan', '']);
+      if (p.tReady != null) steps.push([p.tReady, 'Results back', dur(p.tReady - p.tProv) + ' after the provider']);
+      if (p.tDispo != null) steps.push([p.tDispo, p.admit ? 'Admit order, bed requested' : 'Discharge order', dur(p.tDispo - p.tArr) + ' after arrival']);
+      if (p.tOut != null) steps.push([p.tOut, p.outcome === 'admitted' ? 'Moved to inpatient unit' : p.outcome === 'lwbs' ? 'Left without being seen' : 'Left the department', p.outcome === 'admitted' ? 'boarded ' + dur(p.tOut - p.tDispo) : 'length of stay ' + dur(p.tOut - p.tArr)]);
+      html = `<div class="pt-head"><span class="esi e${p.esi}">${p.esi}</span><span class="name">${p.age} ${p.sex}, ${p.cc}</span></div>
+        <p class="pt-meta">${meta}</p>
+        <ol class="steps">${steps.map(s => `<li><time>${clock(s[0])}</time><span>${s[1]} <span class="n">${s[2]}</span></span></li>`).join('')}</ol>`;
+    }
+    if (html !== dHtml){ dHtml = html; $('detail').innerHTML = html; }
+  }
+
+  let feedN = -1;
+  function renderFeed(){
+    if (S.logN === feedN) return;
+    feedN = S.logN;
+    $('feed').innerHTML = S.log.length ? S.log.slice(-14).reverse().map(e =>
+      `<li><time>${clock(e.t)}</time><span class="kd ${e.k}">${e.k}</span><span>${e.m}</span></li>`).join('') : '<li class="empty">Admissions, ambulance arrivals and walkouts appear here.</li>';
+  }
+
+  /* ---------- chart ---------- */
+  const NS = 'http://www.w3.org/2000/svg';
+  const SERIES = [['b','In beds',1], ['a','Boarding',2], ['w','Waiting room',3]];
+  let svg, hoverPx = null;
+  function buildChart(){
+    svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', 'Line chart of patients in beds, boarding and in the waiting room over the last 24 hours');
+    svg.innerHTML = '<g class="g-grid"></g><path class="ln l1"></path><path class="ln l2"></path><path class="ln l3"></path><g class="g-ends"></g><line class="xh" hidden></line><g class="g-hov"></g>';
+    $('chart').prepend(svg);
+    svg.addEventListener('pointermove', e => { hoverPx = e.clientX - svg.getBoundingClientRect().left; drawChart(); });
+    svg.addEventListener('pointerleave', () => { hoverPx = null; drawChart(); });
+  }
+  function drawChart(){
+    const W = $('chart').clientWidth, H = 210, h = S.hist;
+    if (!W || !h.length) return;
+    svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    const narrow = W < 520;
+    const m = {l:26, r:narrow ? 96 : 116, t:14, b:24};
+    const t1 = S.t, t0 = t1 - 1440;
+    const x = t => m.l + (t - t0) / 1440 * (W - m.l - m.r);
+    let maxV = 15;
+    for (const p of h) maxV = Math.max(maxV, p.b, p.w, p.a);
+    const yMax = Math.max(20, Math.ceil((maxV + 1) / 5) * 5);
+    const y = v => m.t + (1 - v / yMax) * (H - m.t - m.b);
+    let g = '';
+    for (let v = 0; v <= yMax; v += 5) if (v !== 15) g += `<line class="gl" x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}"></line><text class="ax" x="${m.l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+    g += `<line class="cap" x1="${m.l}" x2="${W - m.r}" y1="${y(15)}" y2="${y(15)}"></line><text class="ax" x="${m.l - 6}" y="${y(15) + 4}" text-anchor="end">15</text><text class="ax" x="${m.l + 4}" y="${y(15) - 5}">15 beds</text>`;
+    const stepT = narrow ? 360 : 240;
+    for (let tt = Math.ceil(t0 / stepT) * stepT; tt <= t1; tt += stepT){
+      const xx = x(tt);
+      if (xx < m.l + 14 || xx > W - m.r - 14) continue;
+      g += `<line class="gl" x1="${xx}" x2="${xx}" y1="${H - m.b}" y2="${H - m.b + 4}"></line><text class="ax" x="${xx}" y="${H - 6}" text-anchor="middle">${clock(tt)}</text>`;
+    }
+    svg.querySelector('.g-grid').innerHTML = g;
+    const paths = svg.querySelectorAll('path.ln');
+    SERIES.forEach(([k], i) => paths[i].setAttribute('d', 'M' + h.map(p => x(p.t).toFixed(1) + ',' + y(p[k]).toFixed(1)).join('L')));
+    const lastS = h[h.length - 1], xe = x(lastS.t);
+    const labs = SERIES.map(([k, name, c]) => ({name, c, v:lastS[k], y:y(lastS[k]), ly:y(lastS[k])})).sort((a,b) => a.y - b.y);
+    for (let i = 1; i < labs.length; i++) if (labs[i].ly - labs[i-1].ly < 16) labs[i].ly = labs[i-1].ly + 16;
+    const over = labs[labs.length - 1].ly - (H - m.b);
+    if (over > 0) for (const l of labs) l.ly -= over;
+    svg.querySelector('.g-ends').innerHTML = labs.map(l =>
+      `<circle class="d${l.c}" cx="${xe}" cy="${l.y}" r="4"></circle><rect class="d${l.c}" x="${xe + 10}" y="${l.ly - 4}" width="3" height="9" rx="1"></rect><text class="lb" x="${xe + 18}" y="${l.ly + 5}"><tspan class="v">${l.v}</tspan> ${l.name}</text>`).join('');
+    const xh = svg.querySelector('.xh'), gh = svg.querySelector('.g-hov'), tip = $('tip');
+    if (hoverPx == null || hoverPx < m.l - 4 || hoverPx > W - m.r + 4){ xh.setAttribute('hidden', ''); gh.innerHTML = ''; tip.hidden = true; return; }
+    const tt = t0 + (hoverPx - m.l) / (W - m.l - m.r) * 1440;
+    let best = h[0];
+    for (const p of h) if (Math.abs(p.t - tt) < Math.abs(best.t - tt)) best = p;
+    const hx = x(best.t);
+    xh.removeAttribute('hidden');
+    xh.setAttribute('x1', hx); xh.setAttribute('x2', hx); xh.setAttribute('y1', m.t); xh.setAttribute('y2', H - m.b);
+    gh.innerHTML = SERIES.map(([k, , c]) => `<circle class="d${c}" cx="${hx}" cy="${y(best[k])}" r="4"></circle>`).join('');
+    tip.innerHTML = `<b>Day ${Math.floor(best.t / 1440) + 1}, ${clock(best.t)}</b>` + SERIES.map(([k, name, c]) => `<div class="r"><span><i style="background:var(--c${c})"></i>${name}</span><b>${best[k]}</b></div>`).join('');
+    tip.hidden = false;
+    const tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, hx + 12 + tw > W ? hx - 12 - tw : hx + 12) + 'px';
+  }
+  let tblKey = -1;
+  function renderTable(){
+    if (!$('tbl-details').open) return;
+    const rows = S.hist.filter(p => p.t % 60 === 0);
+    const key = rows.length ? rows[rows.length - 1].t : -1;
+    if (key === tblKey) return;
+    tblKey = key;
+    $('tbl').innerHTML = '<thead><tr><th>Time</th><th>In beds</th><th>Boarding</th><th>Waiting room</th></tr></thead><tbody>' +
+      rows.slice().reverse().map(p => `<tr><td>Day ${Math.floor(p.t / 1440) + 1}, ${clock(p.t)}</td><td>${p.b}</td><td>${p.a}</td><td>${p.w}</td></tr>`).join('') + '</tbody>';
+  }
+
+  /* ================= frame ================= */
+  function render(){
+    const t = S.t;
+    byId = new Map(S.patients.map(p => [p.id, p]));
+    const m = EDSim.metrics(S);
+    $('clk-day').textContent = 'Day ' + (Math.floor(t / 1440) + 1);
+    $('clk-time').textContent = clock(t);
+    const h = EDSim.hourOf(t);
+    $('clk-shift').textContent = (h >= 7 && h < 23 ? 'Day staffing' : 'Night staffing') + ': ' + m.mdBusy + ' of ' + m.mdOn + ' providers and ' + m.rnBusy + ' of ' + m.rnOn + ' nurses at a bedside';
+    renderKpis(m); renderBedLabels(t); renderWaiting(t); renderDetail(t); renderFeed(); drawChart(); renderTable();
+  }
+  function frame(ts){
+    if (last == null) last = ts;
+    const dt = Math.min(.1, (ts - last) / 1000); last = ts;
+    let stepped = false;
+    if (playing){
+      acc += dt * speed;
+      let n = Math.floor(acc); acc -= n;
+      n = Math.min(n, 60);
+      for (let i = 0; i < n; i++) EDSim.step(S);
+      if (n){ dirty = true; stepped = true; }
+    }
+    if (stepped){ byId = new Map(S.patients.map(p => [p.id, p])); syncAgents(); }
+    if (dirty && ts - lastRender > 90){ render(); lastRender = ts; dirty = false; }
+    if (three){
+      moveAgents(dt);
+      three.controls.update();
+      three.renderer.render(three.scene, three.camera);
+      placeLabels();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ================= controls ================= */
+  function syncPlay(){ $('btn-play').textContent = playing ? 'Pause' : 'Play'; }
+  function syncLevers(){
+    $('in-arrivals').value = S.P.perDay; $('out-arrivals').textContent = S.P.perDay;
+    $('in-providers').value = S.P.providers; $('out-providers').textContent = S.P.providers;
+    $('in-nurses').value = S.P.nurses; $('out-nurses').textContent = S.P.nurses;
+    $('in-board').value = S.P.boardMed / 60; $('out-board').textContent = (S.P.boardMed / 60).toFixed(1) + ' h';
+  }
+  function refresh(){ byId = new Map(S.patients.map(p => [p.id, p])); syncAgents(); render(); }
+  function wire(){
+    $('btn-play').addEventListener('click', () => { playing = !playing; syncPlay(); });
+    document.querySelectorAll('input[name=speed]').forEach(r => r.addEventListener('change', () => { if (r.checked) speed = +r.value; }));
+    $('btn-reset').addEventListener('click', () => {
+      S = fresh((Math.random() * 2147483647) | 0, S.P);
+      sel = null; wKey = ''; feedN = -1; tblKey = -1; snap = true;
+      for (const a of [...agents.values()]) dropAgent(a);
+      refresh();
+    });
+    $('btn-surge').addEventListener('click', () => { EDSim.surge(S); refresh(); });
+    const lever = (id, fn) => $(id).addEventListener('input', e => { fn(+e.target.value); syncLevers(); });
+    lever('in-arrivals', v => S.P.perDay = v);
+    lever('in-providers', v => S.P.providers = v);
+    lever('in-nurses', v => S.P.nurses = v);
+    lever('in-board', v => S.P.boardMed = Math.round(v * 60));
+    $('wlist').addEventListener('click', e => {
+      const el = e.target.closest('button[data-pid]');
+      if (!el) return;
+      sel = byId.get(+el.dataset.pid) || null; render();
+    });
+    $('btn-angle').addEventListener('click', () => three && setView('angle'));
+    $('btn-top').addEventListener('click', () => three && setView('top'));
+    $('tbl-details').addEventListener('toggle', () => { tblKey = -1; renderTable(); });
+    addEventListener('resize', () => drawChart());
+  }
+
+  function start(data){
+    if (data && data.S && data.S.beds && data.S.beds.length === 15 && data.S.staff){
+      S = data.S;
+      if (typeof data.speed === 'number') speed = data.speed;
+      if (typeof data.playing === 'boolean') playing = data.playing;
+      const r = $('sp-' + speed); if (r) r.checked = true;
+    } else S = fresh(15029);
+    if (!initScene()){ three = null; $('nogl').hidden = false; document.querySelector('.viewbtns').hidden = true; }
+    buildChart(); wire(); syncPlay(); syncLevers(); refresh();
+    requestAnimationFrame(frame);
+  }
+  const hot = window.claude && window.claude.hot;
+  if (hot && hot.snapshot) hot.snapshot(() => ({S, speed, playing}));
+  if (hot && hot.ready) hot.ready(start); else start((hot && hot.data) || {});
+})();
+</script>
+</body>
+</html>
